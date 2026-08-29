@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Admin</h1>
+  <p class="muted">Synchroniseer de dag. Klik daarna een agenda aan en koppel één zzper aan die agenda.</p>
+  <p class="small">Teamleader: {% if tl_connected %}<strong>gekoppeld</strong>{% else %}nog niet gekoppeld{% endif %} · <a href="{{ url_for('settings') }}">Instellingen</a></p>
+  <p style="margin:12px 0">
+    <a class="btn secondary" href="{{ url_for('rooster') }}">Open weekrooster</a>
+    <a class="btn secondary" href="{{ url_for('team') }}">Zzpers beheren</a>
+  </p>
+  <form method="get" action="{{ url_for('admin') }}" class="form-row">
+    <label>Bekijk datum</label>
+    <input type="date" name="date" value="{{ date }}" onchange="this.form.submit()">
+  </form>
+  <form method="post" action="{{ url_for('sync') }}">
+    <input type="hidden" name="date" value="{{ date }}">
+    <button type="submit">Synchroniseren</button>
+  </form>
+  <form method="post" action="{{ url_for('sync') }}" style="margin-top:8px">
+    <input type="hidden" name="date" value="{{ date }}">
+    <input type="hidden" name="replace" value="1">
+    <button class="btn secondary" type="submit">Opnieuw ophalen (deze dag vervangen)</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Agenda’s {{ date }}</h2>
+  {% if not agendas %}
+    <p class="muted">Nog geen agenda’s. Druk op Synchroniseren of Opnieuw ophalen.</p>
+  {% else %}
+    {% for a in agendas %}
+      <a class="btn ghost" style="display:block;margin:8px 0;text-align:left" href="{{ url_for('admin_agenda', date=date, name=a.name) }}">
+        <strong>{{ a.name }}</strong><br>
+        <span class="small">{{ a.jobs|length }} rit(ten)
+          {% if a.zzpers %} · {{ a.zzpers|join(', ') }}{% else %} · nog geen zzper{% endif %}
+        </span>
+      </a>
+    {% endfor %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Wie werkte op {{ date }}</h2>
+  {% if not worked %}
+    <p class="muted">Nog niemand toegewezen.</p>
+  {% else %}
+    {% for w in worked %}
+      <a class="btn ghost" style="display:block;margin:8px 0;text-align:left" href="{{ url_for('admin_zzper_day', zzper_id=w.id, date=date) }}">
+        <strong>{{ w.name }}</strong><br>
+        <span class="small">{{ w.jobs_count }} rit(ten) · {{ w.done_count }} terug gemeld</span>
+      </a>
+    {% endfor %}
+  {% endif %}
+</div>
+{% endblock %}

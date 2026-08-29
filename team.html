@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Zzpers</h1>
+  <p class="muted">Voeg iemand toe met voornaam en achternaam. Die persoon krijgt een eigen inlog.</p>
+  <form method="post">
+    <div class="form-row">
+      <label>Voornaam</label>
+      <input name="first_name" required placeholder="Jan">
+    </div>
+    <div class="form-row">
+      <label>Achternaam</label>
+      <input name="last_name" required placeholder="de Vries">
+    </div>
+    <div class="form-row">
+      <label>Inlognaam (optioneel)</label>
+      <input name="username" placeholder="leeg = voornaam+achternaam">
+    </div>
+    <div class="form-row">
+      <label>Wachtwoord (optioneel)</label>
+      <input name="password" placeholder="leeg = inlognaam + 123">
+    </div>
+    <button type="submit">Zzper toevoegen</button>
+  </form>
+</div>
+
+{% for z in zzpers %}
+<div class="card">
+  <h2>{{ z.name }}</h2>
+  <p class="small">Inloggen: <strong>{{ z.username }}</strong> · wachtwoord: {{ z.password }}</p>
+  <form method="post" action="{{ url_for('team_delete', user_id=z.id) }}" onsubmit="return confirm('{{ z.name }} verwijderen?');">
+    <button class="btn ghost" type="submit">Verwijderen</button>
+  </form>
+</div>
+{% endfor %}
+{% endblock %}

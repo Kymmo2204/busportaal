@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Teamleader koppelen</h1>
+  <p class="muted">Eenmalig een integratie aanmaken in Teamleader. Daarna kun je met Synchroniseren de echte agenda ophalen.</p>
+
+  <ol class="small">
+    <li>Ga naar <a href="https://marketplace.focus.teamleader.eu/build" target="_blank" rel="noopener">marketplace.focus.teamleader.eu/build</a></li>
+    <li>Maak een integratie (mag privé blijven).</li>
+    <li>Zet als redirect-URL precies dit:<br><code>{{ redirect_uri }}</code></li>
+    <li>Kopieer Client ID en Client Secret hieronder.</li>
+    <li>Klik op Teamleader verbinden en keur toegang goed.</li>
+  </ol>
+</div>
+
+<div class="card">
+  <p class="small">Status: {% if tl_connected %}<strong>gekoppeld</strong>{% else %}niet gekoppeld{% endif %}</p>
+  <form method="post">
+    <div class="form-row">
+      <label>Client ID</label>
+      <input name="tl_client_id" value="{{ tl_client_id }}" autocomplete="off">
+    </div>
+    <div class="form-row">
+      <label>Client Secret</label>
+      <input name="tl_client_secret" value="{{ tl_client_secret }}" autocomplete="off">
+    </div>
+    <button type="submit">Gegevens opslaan</button>
+  </form>
+  <p style="margin-top:12px">
+    <a class="btn secondary" href="{{ url_for('teamleader_connect') }}">Teamleader verbinden</a>
+    <a class="btn ghost" href="{{ url_for('admin') }}">Terug naar admin</a>
+  </p>
+</div>
+{% endblock %}

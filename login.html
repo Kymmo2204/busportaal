@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card login-box">
+  <h1>Inloggen</h1>
+  <p class="muted">Huisconcierge werkportaal voor planning en terugmelding.</p>
+  <form method="post">
+    <div class="form-row">
+      <label>Gebruikersnaam</label>
+      <input name="username" required autocomplete="username">
+    </div>
+    <div class="form-row">
+      <label>Wachtwoord</label>
+      <input name="password" type="password" required autocomplete="current-password">
+    </div>
+    <button type="submit">Inloggen</button>
+  </form>
+  <hr class="soft">
+  <p class="muted"><strong>Testaccounts</strong></p>
+  <p class="muted">Admin: admin / admin123</p>
+  <p class="muted">Zzpers: jan, piet, lisa — wachtwoord is naam + 123</p>
+</div>
+{% endblock %}

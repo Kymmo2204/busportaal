@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>{% if is_admin %}Weekrooster{% else %}Mijn rooster{% endif %}</h1>
+  <p class="muted">{{ monday }} t/m {{ sunday }}</p>
+  <div class="row">
+    <a class="btn ghost" href="{{ url_for('rooster', week=prev_week) }}">Vorige week</a>
+    <a class="btn ghost" href="{{ url_for('rooster', week=next_week) }}">Volgende week</a>
+  </div>
+</div>
+
+{% if is_admin %}
+<form method="post">
+  <input type="hidden" name="week" value="{{ monday }}">
+  {% for label, day in days %}
+  <div class="card">
+    <h2>{{ label }} <span class="small">{{ day.isoformat() }}</span></h2>
+    {% for z in zzpers %}
+      <label style="font-weight:500;margin:6px 0">
+        <input type="checkbox" name="day_{{ day.isoformat() }}" value="{{ z.id }}" style="width:auto"
+          {% for p in by_day[day.isoformat()] %}{% if p.zzper_id == z.id %}checked{% endif %}{% endfor %}>
+        {{ z.name }}
+      </label>
+    {% endfor %}
+  </div>
+  {% endfor %}
+  <button type="submit">Weekrooster opslaan</button>
+</form>
+{% else %}
+  {% for label, day in days %}
+  <div class="card {% if day.isoformat() in my_days %}job{% endif %}">
+    <h2>{{ label }}</h2>
+    <p class="small">{{ day.isoformat() }}</p>
+    {% if day.isoformat() in my_days %}
+      <p><strong>Jij werkt deze dag.</strong></p>
+    {% else %}
+      <p class="muted">Geen dienst ingeroosterd.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% endif %}
+{% endblock %}

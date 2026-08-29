@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <a class="btn ghost" href="{{ url_for('admin', date=date) }}">← Terug naar dag</a>
+  <h1>{{ person.name }}</h1>
+  <p class="muted">Wat er gebeurd is op {{ date }}</p>
+</div>
+
+{% if not jobs %}
+  <div class="card"><p class="muted">Geen ritten voor deze zzper op deze dag.</p></div>
+{% endif %}
+
+{% for j in jobs %}
+<div class="card job">
+  <div class="row">
+    <span class="badge type">{{ j.type }}</span>
+    <strong>{{ j.time }}</strong>
+    {% if j.payment %}<span class="badge {{ j.payment }}">{{ j.payment }}</span>{% else %}<span class="badge open">niet teruggemeld</span>{% endif %}
+  </div>
+  <h2>{{ j.title }}</h2>
+  {% if j.details %}<div class="work">{{ j.details }}</div>{% endif %}
+  <div class="small">Intern: {{ j.bus }}</div>
+  {% if j.extern %}<div class="small">Extern: {{ j.extern }} {% if j.phone %}· {{ j.phone }}{% endif %}</div>{% endif %}
+  {% if j.address %}<div class="small">Locatie: {{ j.location_name }} @ {{ j.address }}</div>{% endif %}
+  {% if j.amount %}<div class="small">Bedrag: {{ j.amount }}</div>{% endif %}
+  <p style="margin:10px 0"><a class="btn secondary" href="https://huisconcierge.nl/inspectie" target="_blank" rel="noopener">Inspectierapport</a></p>
+  {% if j.photos %}
+    <div class="photos">
+      {% for p in j.photos %}
+        <img src="{{ url_for('static', filename='uploads/' + p) }}" alt="foto">
+      {% endfor %}
+    </div>
+  {% endif %}
+  {% if j.comment %}
+    <hr class="soft">
+    <div><strong>Opmerking zzper</strong></div>
+    <div class="work">{{ j.comment }}</div>
+  {% else %}
+    <p class="muted">Nog geen opmerking.</p>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

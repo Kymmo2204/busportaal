@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <a class="btn ghost" href="{{ url_for('admin', date=date) }}">← Alle agenda’s</a>
+  <h1>{{ name }}</h1>
+  <p class="muted">{{ date }} · vink alle zzpers aan die op deze agenda meegaan</p>
+  <form method="post" action="{{ url_for('assign_agenda') }}">
+    <input type="hidden" name="date" value="{{ date }}">
+    <input type="hidden" name="name" value="{{ name }}">
+    <div class="form-row">
+      <label>Zzpers</label>
+      {% for z in zzpers %}
+      <label style="font-weight:500;margin:6px 0">
+        <input type="checkbox" name="zzper_ids" value="{{ z.id }}" {% if z.id in selected %}checked{% endif %} style="width:auto">
+        {{ z.name }}
+      </label>
+      {% endfor %}
+    </div>
+    <button type="submit">Zzpers opslaan</button>
+  </form>
+</div>
+
+{% if not jobs %}
+  <div class="card"><p class="muted">Geen ritten in deze agenda.</p></div>
+{% endif %}
+
+{% for j in jobs %}
+<div class="card job">
+  <div class="row">
+    <span class="badge type">{{ j.type }}</span>
+    <strong>{{ j.time }}</strong>
+    {% if j.payment %}<span class="badge {{ j.payment }}">{{ j.payment }}</span>{% else %}<span class="badge open">open</span>{% endif %}
+  </div>
+  <h2>{{ j.title }}</h2>
+  {% if j.details %}<div class="work">{{ j.details }}</div>{% endif %}
+  {% if j.extern %}<div class="small">Extern: {{ j.extern }}{% if j.phone %} · {{ j.phone }}{% endif %}</div>{% endif %}
+  {% if j.address %}
+    <div class="small">Locatie: {{ j.location_name }} @ {{ j.address }}</div>
+    <div class="nav-row">
+      <a class="btn maps" href="{{ j.maps }}" target="_blank" rel="noopener">Google Maps</a>
+      <a class="btn waze" href="{{ j.waze }}" target="_blank" rel="noopener">Waze</a>
+    </div>
+  {% endif %}
+  <p style="margin:10px 0"><a class="btn secondary" href="https://huisconcierge.nl/inspectie" target="_blank" rel="noopener">Inspectierapport</a></p>
+  {% if j.photos %}
+    <div class="photos">
+      {% for p in j.photos %}
+        <img src="{{ url_for('static', filename='uploads/' + p) }}" alt="foto">
+      {% endfor %}
+    </div>
+  {% endif %}
+  <form method="post" action="{{ url_for('upload_photo', job_id=j.id) }}" enctype="multipart/form-data" class="form-row">
+    <input type="hidden" name="date" value="{{ date }}">
+    <input type="hidden" name="name" value="{{ name }}">
+    <label>Foto toevoegen</label>
+    <input type="file" name="photo" accept="image/*">
+    <button class="btn ghost" type="submit" style="margin-top:8px">Foto uploaden</button>
+  </form>
+  {% if j.comment %}<div class="small">Opmerking: {{ j.comment }}</div>{% endif %}
+  <form method="post" action="{{ url_for('delete_job', job_id=j.id) }}" style="margin-top:10px" onsubmit="return confirm('Deze klus uit het portaal halen?');">
+    <button class="btn ghost" type="submit">Verwijderen</button>
+  </form>
+</div>
+{% endfor %}
+{% endblock %}

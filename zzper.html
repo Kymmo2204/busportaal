@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Mijn dag</h1>
+  <p style="margin:0 0 12px"><a class="btn secondary" href="{{ url_for('rooster') }}">Mijn rooster</a></p>
+  <form method="get">
+    <div class="form-row">
+      <label>Datum</label>
+      <input type="date" name="date" value="{{ date }}">
+    </div>
+    <button class="btn secondary" type="submit">Tonen</button>
+  </form>
+</div>
+
+{% if not jobs %}
+  <div class="card"><p class="muted">Geen jobs toegewezen op {{ date }}.</p></div>
+{% endif %}
+
+{% for j in jobs %}
+<div class="card job">
+  <div class="row">
+    <span class="badge type">{{ j.type }}</span>
+    <strong>{{ j.time }}</strong>
+    {% if j.payment %}
+      <span class="badge {{ j.payment }}">{{ j.payment }}</span>
+    {% else %}
+      <span class="badge open">nog invullen</span>
+    {% endif %}
+  </div>
+  <h2>{{ j.title }}</h2>
+  {% if j.details %}<div class="work">{{ j.details }}</div>{% endif %}
+  <div class="small">Intern: {{ j.bus }}</div>
+  {% if j.extern %}<div class="small">Extern: {{ j.extern }}</div>{% endif %}
+  {% if j.phone %}<div class="phone"><a href="tel:{{ j.phone }}">Bel {{ j.phone }}</a></div>{% endif %}
+  {% if j.address %}
+    <div class="small">Locatie: {{ j.location_name }} @ {{ j.address }}</div>
+    <div class="nav-row">
+      <a class="btn maps" href="{{ j.maps }}" target="_blank" rel="noopener">Google Maps</a>
+      <a class="btn waze" href="{{ j.waze }}" target="_blank" rel="noopener">Waze</a>
+    </div>
+  {% endif %}
+  <p style="margin:10px 0"><a class="btn secondary" href="{{ j.inspectie }}" target="_blank" rel="noopener">Inspectierapport invullen</a></p>
+  {% if j.photos %}
+    <div class="photos">
+      {% for p in j.photos %}
+        <img src="{{ url_for('static', filename='uploads/' + p) }}" alt="foto">
+      {% endfor %}
+    </div>
+  {% endif %}
+  <form method="post" action="{{ url_for('upload_photo', job_id=j.id) }}" enctype="multipart/form-data" class="form-row">
+    <input type="hidden" name="date" value="{{ date }}">
+    <label>Foto toevoegen</label>
+    <input type="file" name="photo" accept="image/*" capture="environment">
+    <button class="btn ghost" type="submit" style="margin-top:8px">Foto uploaden</button>
+  </form>
+  {% if j.amount %}<div class="small"><strong>{{ j.amount }}</strong></div>{% endif %}
+
+  <hr class="soft">
+  <form method="post" action="{{ url_for('report', job_id=j.id) }}">
+    <input type="hidden" name="date" value="{{ date }}">
+    <div class="form-row">
+      <label>Betaalwijze</label>
+      <select name="payment" required>
+        <option value="">Kies…</option>
+        <option value="contant" {% if j.payment=='contant' %}selected{% endif %}>Contant betaald</option>
+        <option value="gepind" {% if j.payment=='gepind' %}selected{% endif %}>Gepind</option>
+        <option value="factuur" {% if j.payment=='factuur' %}selected{% endif %}>Per factuur</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Opmerking</label>
+      <textarea name="comment" placeholder="Wat is er gedaan, bijzonderheden…">{{ j.comment or '' }}</textarea>
+    </div>
+    <button type="submit">Opslaan</button>
+  </form>
+</div>
+{% endfor %}
+{% endblock %}
