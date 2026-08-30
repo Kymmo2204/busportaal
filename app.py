@@ -14,8 +14,12 @@ from flask import (
 from werkzeug.utils import secure_filename
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(APP_DIR, "data", "app.db")
-UPLOAD_DIR = os.path.join(APP_DIR, "static", "uploads")
+if os.environ.get("RENDER") or os.environ.get("DATABASE_PATH"):
+    DB_PATH = os.environ.get("DATABASE_PATH") or "/tmp/busportaal.db"
+    UPLOAD_DIR = os.environ.get("UPLOAD_DIR") or "/tmp/busportaal-uploads"
+else:
+    DB_PATH = os.path.join(APP_DIR, "data", "app.db")
+    UPLOAD_DIR = os.path.join(APP_DIR, "static", "uploads")
 ALLOWED_PHOTOS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic"}
 INSPECTIE_URL = "https://huisconcierge.nl/inspectie"
 
@@ -225,7 +229,10 @@ def init_db():
         )
     except sqlite3.Error:
         pass
-    db.commit()
+    try:
+        db.commit()
+    except sqlite3.Error:
+        pass
 
 
 def current_user():
@@ -450,6 +457,7 @@ def decorate(jobs):
                 (item["id"],),
             ).fetchall()
         ]
+        item["photo_urls"] = [url_for("uploaded_file", filename=p) for p in item["photos"]]
         out.append(item)
     return out
 
@@ -476,6 +484,13 @@ def login():
     if current_user():
         return redirect(url_for("admin" if session.get("role") == "admin" else "zzper"))
     return render_template("login.html", title="Inloggen")
+
+
+@app.route("/uploads/<path:filename>")
+def uploaded_file(filename):
+    from flask import send_from_directory
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    return send_from_directory(UPLOAD_DIR, filename)
 
 
 @app.route("/logout")
