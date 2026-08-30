@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title or 'Huisconcierge portaal' }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=5">
+</head>
+<body>
+  <div class="top-strip">Huisconcierge · planning &amp; terugmelding</div>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo-card">
+        <svg class="logo-mark" viewBox="0 0 64 48" aria-hidden="true">
+          <path d="M12 38 V18 L32 6 L52 18 V38" fill="none" stroke="#1B2156" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M22 30 Q32 40 42 30" fill="none" stroke="#F27A7A" stroke-width="5" stroke-linecap="round"/>
+        </svg>
+        <div>
+          <div class="brand-name">Huisconcierge</div>
+          <div class="brand-sub">Alles voor jouw huis</div>
+        </div>
+      </div>
+      {% if session.get('user_id') %}
+      <div class="header-user">
+        <span>{{ session.get('name') }}</span>
+        <a class="btn ghost" href="{{ url_for('logout') }}">Uitloggen</a>
+      </div>
+      {% endif %}
+    </div>
+  </header>
+  {% if session.get('user_id') %}
+  <nav class="tabs">
+    {% if session.get('role') == 'admin' %}
+      <a class="tab {% if request.endpoint in ['admin','admin_agenda','admin_zzper_day','settings'] %}on{% endif %}" href="{{ url_for('admin') }}">Planning</a>
+      <a class="tab {% if request.endpoint == 'rooster' %}on{% endif %}" href="{{ url_for('rooster') }}">Weekrooster</a>
+      <a class="tab {% if request.endpoint == 'team' %}on{% endif %}" href="{{ url_for('team') }}">Zzpers</a>
+    {% else %}
+      <a class="tab {% if request.endpoint == 'zzper' %}on{% endif %}" href="{{ url_for('zzper') }}">Mijn dag</a>
+      <a class="tab {% if request.endpoint == 'rooster' %}on{% endif %}" href="{{ url_for('rooster') }}">Mijn rooster</a>
+    {% endif %}
+  </nav>
+  {% endif %}
+  <div class="wrap">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="flash {{ 'err' if cat == 'error' else '' }}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>
