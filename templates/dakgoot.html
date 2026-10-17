@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <a class="btn ghost" href="{{ url_for('zzper', date=job.date) }}">← Terug naar mijn dag</a>
+  <h1>Dakgoot-rapport</h1>
+  <p class="small">Adres: <strong>{{ job.address or 'onbekend' }}</strong></p>
+  {% if job.location_name %}<p class="small">{{ job.location_name }}</p>{% endif %}
+</div>
+
+<form method="post" enctype="multipart/form-data">
+  <div class="card">
+    <div class="form-row">
+      <label>Status</label>
+      <label style="font-weight:500;margin:8px 0">
+        <input type="radio" name="status" value="goedgekeurd" required {% if report and report.status=='goedgekeurd' %}checked{% endif %} style="width:auto">
+        Goedgekeurd
+      </label>
+      <label style="font-weight:500;margin:8px 0">
+        <input type="radio" name="status" value="afgekeurd" {% if report and report.status=='afgekeurd' %}checked{% endif %} style="width:auto">
+        Afgekeurd
+      </label>
+    </div>
+    <div id="punten-box" class="small" style="display:none;margin-top:8px">
+      <strong>Bij goedgekeurd worden deze punten automatisch goedgekeurd:</strong>
+      <ul>
+        {% for p in punten %}<li>{{ p }}</li>{% endfor %}
+      </ul>
+    </div>
+    <div id="comment-box" class="form-row" style="display:none;margin-top:12px">
+      <label>Wat is er mis?</label>
+      <textarea name="comment" placeholder="Beschrijf wat er niet in orde is…">{{ report.comment if report else '' }}</textarea>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="form-row">
+      <label>Foto’s (1 of 2)</label>
+      <input type="file" name="photos" accept="image/*" capture="environment" multiple>
+    </div>
+    {% if photos %}
+      <div class="photos">
+        {% for p in photos %}
+          <img src="{{ url_for('uploaded_file', filename=p) }}" alt="foto">
+        {% endfor %}
+      </div>
+      <p class="small">Bestaande foto’s blijven staan. Nieuwe foto’s worden toegevoegd.</p>
+    {% endif %}
+    <button type="submit">Rapport opslaan</button>
+  </div>
+</form>
+
+<script>
+function updateForm() {
+  const status = document.querySelector('input[name="status"]:checked');
+  const punten = document.getElementById('punten-box');
+  const comment = document.getElementById('comment-box');
+  if (!status) return;
+  if (status.value === 'goedgekeurd') {
+    punten.style.display = 'block';
+    comment.style.display = 'none';
+  } else {
+    punten.style.display = 'none';
+    comment.style.display = 'block';
+  }
+}
+document.querySelectorAll('input[name="status"]').forEach(r => r.addEventListener('change', updateForm));
+updateForm();
+</script>
+{% endblock %}
