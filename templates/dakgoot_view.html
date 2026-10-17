@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <a class="btn ghost" href="{{ url_for('admin') if is_admin else url_for('zzper') }}">← Terug</a>
+  <h1>Dakgoot-rapport</h1>
+  <p class="small">Adres: <strong>{{ report.address or (job.address if job else '') }}</strong></p>
+  {% if job and job.location_name %}<p class="small">{{ job.location_name }}</p>{% endif %}
+  <p class="small">Ingevuld door: {{ zzper_name or 'onbekend' }} · {{ report.created_at[:16] if report.created_at else '' }}</p>
+</div>
+
+<div class="card">
+  <h2>Status</h2>
+  {% if report.status == 'goedgekeurd' %}
+    <span class="badge contant">Goedgekeurd</span>
+    <p class="small" style="margin-top:8px">Alle inspectiepunten zijn automatisch goedgekeurd:</p>
+    <ul>
+      {% for p in punten %}<li>{{ p }}</li>{% endfor %}
+    </ul>
+  {% else %}
+    <span class="badge open">Afgekeurd</span>
+    {% if report.comment %}
+      <div class="work" style="margin-top:10px"><strong>Opmerking:</strong><br>{{ report.comment }}</div>
+    {% endif %}
+  {% endif %}
+</div>
+
+{% if photos %}
+<div class="card">
+  <h2>Foto’s</h2>
+  <div class="photos">
+    {% for p in photos %}
+      <img src="{{ url_for('uploaded_file', filename=p) }}" alt="foto">
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if is_admin %}
+<div class="card">
+  <h2>Doorsturen naar klant</h2>
+  <form method="post" action="{{ url_for('email_dakgoot', report_id=report.id) }}">
+    <div class="form-row">
+      <label>E-mailadres klant</label>
+      <input type="email" name="email" required placeholder="klant@voorbeeld.nl">
+    </div>
+    <button type="submit">Rapport versturen</button>
+  </form>
+  <p class="small">Tip: vul SMTP-gegevens in onder Instellingen als je het automatisch wilt laten versturen. Anders opent je mailprogramma.</p>
+</div>
+{% endif %}
+{% endblock %}
