@@ -58,7 +58,7 @@
   <form method="post" action="{{ url_for('upload_photo', job_id=j.id) }}" enctype="multipart/form-data" class="form-row">
     <input type="hidden" name="date" value="{{ date }}">
     <label>Foto toevoegen</label>
-    <input type="file" name="photo" accept="image/*" capture="environment">
+    <input type="file" name="photo" accept="image/*">
     <button class="btn ghost" type="submit" style="margin-top:8px">Foto uploaden</button>
   </form>
   {% if j.amount %}<div class="small"><strong>{{ j.amount }}</strong></div>{% endif %}
