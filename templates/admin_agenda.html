@@ -33,7 +33,8 @@
   </div>
   <h2>{{ j.title }}</h2>
   {% if j.details %}<div class="work">{{ j.details }}</div>{% endif %}
-  {% if j.extern %}<div class="small">Extern: {{ j.extern }}{% if j.phone %} · {{ j.phone }}{% endif %}</div>{% endif %}
+  {% if j.extern %}<div class="small">Extern: {{ j.extern }}</div>{% endif %}
+  {% if j.phone %}<p style="margin:10px 0"><a class="btn" href="tel:{{ j.phone }}">Bel {{ j.phone }}</a></p>{% endif %}
   {% if j.address %}
     <div class="small">Locatie: {{ j.location_name }} @ {{ j.address }}</div>
     <div class="nav-row">
@@ -41,7 +42,15 @@
       <a class="btn waze" href="{{ j.waze }}" target="_blank" rel="noopener">Waze</a>
     </div>
   {% endif %}
-  <p style="margin:10px 0"><a class="btn secondary" href="https://huisconcierge.nl/inspectie" target="_blank" rel="noopener">Inspectierapport</a></p>
+  {% if j.dakgoot_id %}
+    <p style="margin:10px 0">
+      <a class="btn secondary" href="{{ url_for('view_dakgoot', report_id=j.dakgoot_id) }}">
+        Bekijk dakgoot-rapport ({{ j.dakgoot_status }})
+      </a>
+    </p>
+  {% else %}
+    <p class="small muted">Nog geen dakgoot-rapport ingevuld door zzper.</p>
+  {% endif %}
   {% if j.photos %}
     <div class="photos">
       {% for p in j.photos %}
