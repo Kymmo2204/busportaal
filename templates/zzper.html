@@ -31,7 +31,11 @@
   {% if j.details %}<div class="work">{{ j.details }}</div>{% endif %}
   <div class="small">Intern: {{ j.bus }}</div>
   {% if j.extern %}<div class="small">Extern: {{ j.extern }}</div>{% endif %}
-  {% if j.phone %}<div class="phone"><a href="tel:{{ j.phone }}">Bel {{ j.phone }}</a></div>{% endif %}
+  {% if j.phone %}
+    <p style="margin:10px 0">
+      <a class="btn" href="tel:{{ j.phone }}">Bel {{ j.phone }}</a>
+    </p>
+  {% endif %}
   {% if j.address %}
     <div class="small">Locatie: {{ j.location_name }} @ {{ j.address }}</div>
     <div class="nav-row">
@@ -39,7 +43,11 @@
       <a class="btn waze" href="{{ j.waze }}" target="_blank" rel="noopener">Waze</a>
     </div>
   {% endif %}
-  <p style="margin:10px 0"><a class="btn secondary" href="{{ j.inspectie }}" target="_blank" rel="noopener">Inspectierapport invullen</a></p>
+  <p style="margin:10px 0">
+    <a class="btn secondary" href="{{ url_for('dakgoot_report', job_id=j.id) }}">
+      Dakgoot-rapport{% if j.dakgoot_status %} ({{ j.dakgoot_status }}){% else %} invullen{% endif %}
+    </a>
+  </p>
   {% if j.photos %}
     <div class="photos">
       {% for p in j.photos %}
