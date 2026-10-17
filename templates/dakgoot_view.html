@@ -12,12 +12,20 @@
   <h2>Status</h2>
   {% if report.status == 'goedgekeurd' %}
     <span class="badge contant">Goedgekeurd</span>
-    <p class="small" style="margin-top:8px">Alle inspectiepunten zijn automatisch goedgekeurd:</p>
-    <ul>
-      {% for p in punten %}<li>{{ p }}</li>{% endfor %}
-    </ul>
   {% else %}
     <span class="badge open">Afgekeurd</span>
+  {% endif %}
+  <p class="small" style="margin-top:10px"><strong>Altijd gecontroleerd:</strong></p>
+  <ul style="margin:4px 0 8px">
+    <li>Dakgoten schoon van blad en vervuiling ✓</li>
+    <li>Hemelwaterafvoer gecontroleerd op verstoppingen ✓</li>
+  </ul>
+  {% if report.status == 'goedgekeurd' %}
+    <p class="small"><strong>Overige punten:</strong></p>
+    <ul>
+      {% for p in punten[2:] %}<li>{{ p }} ✓</li>{% endfor %}
+    </ul>
+  {% else %}
     {% if report.comment %}
       <div class="work" style="margin-top:10px"><strong>Opmerking:</strong><br>{{ report.comment }}</div>
     {% endif %}
