@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>E-mail openen</h1>
+  <p class="muted">SMTP is nog niet ingesteld. Klik op de knop om je mailprogramma te openen met het rapport klaar.</p>
+  <p><a class="btn" href="{{ mailto }}">Open mail naar {{ to_email }}</a></p>
+  <p style="margin-top:12px"><a class="btn ghost" href="{{ url_for('view_dakgoot', report_id=report_id) }}">Terug naar rapport</a></p>
+</div>
+{% endblock %}
