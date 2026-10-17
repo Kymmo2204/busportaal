@@ -1332,6 +1332,72 @@ def view_dakgoot(report_id):
     )
 
 
+def build_dakgoot_pdf(report, job, photos, zzper_name):
+    from fpdf import FPDF
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, "Dakgoot-rapport Huisconcierge", ln=True)
+    pdf.set_font("Helvetica", size=11)
+    pdf.ln(4)
+    address = report["address"] or (job["address"] if job else "") or "-"
+    pdf.cell(0, 8, f"Adres: {address}", ln=True)
+    if job and job["location_name"]:
+        pdf.cell(0, 8, f"Locatie: {job['location_name']}", ln=True)
+    pdf.cell(0, 8, f"Datum klus: {job['date'] if job else ''}", ln=True)
+    pdf.cell(0, 8, f"Ingevuld door: {zzper_name or '-'}", ln=True)
+    status_txt = "Goedgekeurd" if report["status"] == "goedgekeurd" else "Afgekeurd"
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, f"Status: {status_txt}", ln=True)
+    pdf.set_font("Helvetica", size=11)
+    if report["status"] == "goedgekeurd":
+        pdf.ln(2)
+        pdf.cell(0, 8, "Alle inspectiepunten zijn goedgekeurd:", ln=True)
+        for p in DAKGOOT_PUNTEN:
+            pdf.cell(0, 7, f"  - {p}", ln=True)
+    else:
+        pdf.ln(2)
+        pdf.multi_cell(0, 7, f"Opmerking: {report['comment'] or '-'}")
+    if photos:
+        pdf.ln(6)
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 8, "Foto's", ln=True)
+        pdf.set_font("Helvetica", size=11)
+        y = pdf.get_y()
+        for i, fn in enumerate(photos[:2]):
+            path = os.path.join(UPLOAD_DIR, fn)
+            if os.path.exists(path):
+                try:
+                    pdf.image(path, x=10 + (i % 2) * 95, y=y, w=90)
+                except Exception:
+                    pass
+        pdf.ln(60)
+    pdf_path = os.path.join("/tmp", f"dakgoot_{report['id']}.pdf")
+    pdf.output(pdf_path)
+    return pdf_path
+
+
+@app.route("/dakgoot/<int:report_id>/pdf")
+def dakgoot_pdf(report_id):
+    user = current_user()
+    if not user:
+        return redirect(url_for("login"))
+    db = get_db()
+    report = db.execute("SELECT * FROM dakgoot_reports WHERE id=?", (report_id,)).fetchone()
+    if not report:
+        flash("Rapport niet gevonden.", "error")
+        return redirect(url_for("admin"))
+    job = db.execute("SELECT * FROM jobs WHERE id=?", (report["job_id"],)).fetchone()
+    photos = [r["filename"] for r in db.execute(
+        "SELECT filename FROM report_photos WHERE report_id=? ORDER BY id", (report_id,)
+    ).fetchall()]
+    zzper = db.execute("SELECT name FROM users WHERE id=?", (report["zzper_id"],)).fetchone()
+    path = build_dakgoot_pdf(report, job, photos, zzper["name"] if zzper else "")
+    from flask import send_file
+    return send_file(path, as_attachment=True, download_name=f"dakgoot-rapport-{report_id}.pdf")
+
+
 @app.route("/dakgoot/<int:report_id>/email", methods=["POST"])
 def email_dakgoot(report_id):
     guard = login_required("admin")
@@ -1347,20 +1413,21 @@ def email_dakgoot(report_id):
         flash("Rapport niet gevonden.", "error")
         return redirect(url_for("admin"))
     job = db.execute("SELECT * FROM jobs WHERE id=?", (report["job_id"],)).fetchone()
-    # For now: build a simple mailto-friendly text and also try SMTP if configured
+    photos = [r["filename"] for r in db.execute(
+        "SELECT filename FROM report_photos WHERE report_id=?", (report_id,)
+    ).fetchall()]
+    zzper = db.execute("SELECT name FROM users WHERE id=?", (report["zzper_id"],)).fetchone()
     status_txt = "Goedgekeurd" if report["status"] == "goedgekeurd" else "Afgekeurd"
-    body_lines = [
-        f"Dakgoot-rapport Huisconcierge",
-        f"Adres: {report['address'] or job['address'] or ''}",
-        f"Status: {status_txt}",
-    ]
-    if report["status"] == "goedgekeurd":
-        body_lines.append("Alle inspectiepunten zijn goedgekeurd.")
-    else:
-        body_lines.append(f"Opmerking: {report['comment'] or ''}")
-    body_lines.append(f"Datum klus: {job['date'] if job else ''}")
-    body = "\n".join(body_lines)
-    # Try SMTP if settings present
+    body = (
+        f"Beste klant,\n\n"
+        f"Hierbij het dakgoot-rapport van Huisconcierge.\n\n"
+        f"Adres: {report['address'] or (job['address'] if job else '')}\n"
+        f"Status: {status_txt}\n"
+    )
+    if report["status"] == "afgekeurd":
+        body += f"Opmerking: {report['comment'] or ''}\n"
+    body += "\nMet vriendelijke groet,\nHuisconcierge"
+    pdf_path = build_dakgoot_pdf(report, job, photos, zzper["name"] if zzper else "")
     smtp_host = get_setting("smtp_host")
     smtp_user = get_setting("smtp_user")
     smtp_pass = get_setting("smtp_pass")
@@ -1374,34 +1441,17 @@ def email_dakgoot(report_id):
             msg["From"] = from_addr
             msg["To"] = to_email
             msg.set_content(body)
-            photos = [r["filename"] for r in db.execute(
-                "SELECT filename FROM report_photos WHERE report_id=?", (report_id,)
-            ).fetchall()]
-            for fn in photos:
-                path = os.path.join(UPLOAD_DIR, fn)
-                if os.path.exists(path):
-                    with open(path, "rb") as f:
-                        msg.add_attachment(f.read(), maintype="image", subtype="jpeg", filename=fn)
+            with open(pdf_path, "rb") as f:
+                msg.add_attachment(f.read(), maintype="application", subtype="pdf", filename=f"dakgoot-rapport-{report_id}.pdf")
             with smtplib.SMTP(smtp_host, int(get_setting("smtp_port") or 587)) as s:
                 s.starttls()
                 s.login(smtp_user, smtp_pass)
                 s.send_message(msg)
-            flash(f"Rapport verstuurd naar {to_email}.")
+            flash(f"Rapport (PDF) verstuurd naar {to_email}.")
         except Exception as e:
-            flash(f"E-mail mislukt: {e}. Gebruik de mailto-link hieronder.", "error")
-            # fall through to show mailto
+            flash(f"E-mail mislukt: {e}. Download de PDF en stuur hem zelf.", "error")
     else:
-        # No SMTP configured – provide mailto
-        import urllib.parse
-        mailto = f"mailto:{to_email}?subject={urllib.parse.quote('Dakgoot-rapport Huisconcierge')}&body={urllib.parse.quote(body)}"
-        flash("SMTP nog niet ingesteld. Open je mailprogramma via de knop.")
-        return render_template(
-            "dakgoot_email.html",
-            title="Verstuur rapport",
-            mailto=mailto,
-            to_email=to_email,
-            report_id=report_id,
-        )
+        flash("SMTP nog niet ingesteld. Download de PDF en stuur hem zelf per e-mail.")
     return redirect(url_for("view_dakgoot", report_id=report_id))
 
 
