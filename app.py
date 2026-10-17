@@ -14,17 +14,47 @@ from flask import (
 from werkzeug.utils import secure_filename
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-if os.environ.get("RENDER") or os.environ.get("DATABASE_PATH"):
-    DB_PATH = os.environ.get("DATABASE_PATH") or "/tmp/busportaal.db"
+
+
+def _writable_path(candidates):
+    for path in candidates:
+        if not path:
+            continue
+        folder = os.path.dirname(path) or "."
+        # Nooit zelf /var/data aanmaken: dat moet de Render-disk zijn.
+        if folder == "/var/data" and not os.path.isdir(folder):
+            continue
+        try:
+            if folder not in (".", ""):
+                os.makedirs(folder, exist_ok=True)
+            with open(path, "a"):
+                pass
+            return path
+        except OSError:
+            continue
+    return [p for p in candidates if p][-1]
+
+
+DB_PATH = _writable_path([
+    os.environ.get("DATABASE_PATH"),
+    "/var/data/busportaal.db",
+    "/tmp/busportaal.db",
+    os.path.join(APP_DIR, "data", "app.db"),
+])
+if str(DB_PATH).startswith("/var/data"):
+    UPLOAD_DIR = os.environ.get("UPLOAD_DIR") or "/var/data/uploads"
+elif str(DB_PATH).startswith("/tmp"):
     UPLOAD_DIR = os.environ.get("UPLOAD_DIR") or "/tmp/busportaal-uploads"
 else:
-    DB_PATH = os.path.join(APP_DIR, "data", "app.db")
-    UPLOAD_DIR = os.path.join(APP_DIR, "static", "uploads")
+    UPLOAD_DIR = os.environ.get("UPLOAD_DIR") or os.path.join(APP_DIR, "static", "uploads")
 ALLOWED_PHOTOS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic"}
 INSPECTIE_URL = "https://huisconcierge.nl/inspectie"
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "lokale-test-sleutel-wijzig-later")
+app.config["PREFERRED_URL_SCHEME"] = "https"
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 AGENDA_NAMES = [
     "Bus 2 Huisconcierge | Shiela",
@@ -138,8 +168,9 @@ def maps_links(address):
 
 def get_db():
     if "db" not in g:
-        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-        g.db = sqlite3.connect(DB_PATH)
+        folder = os.path.dirname(DB_PATH) or "."
+        os.makedirs(folder, exist_ok=True)
+        g.db = sqlite3.connect(DB_PATH, timeout=15)
         g.db.row_factory = sqlite3.Row
     return g.db
 
@@ -210,6 +241,20 @@ def init_db():
         CREATE TABLE IF NOT EXISTS job_photos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             job_id INTEGER,
+            filename TEXT
+        );
+        CREATE TABLE IF NOT EXISTS dakgoot_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER UNIQUE,
+            status TEXT,
+            comment TEXT,
+            address TEXT,
+            created_at TEXT,
+            zzper_id INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS report_photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            report_id INTEGER,
             filename TEXT
         );
         """
@@ -347,16 +392,140 @@ def user_display_name(user):
     return official_agenda_name(name, user.get("email") or "")
 
 
-def event_to_job(ev, bus_name):
+def pick_phone(telephones):
+    if not telephones:
+        return ""
+    rank = {"mobile": 0, "phone": 1, "fax": 9}
+    ordered = sorted(
+        telephones,
+        key=lambda t: rank.get(str(t.get("type") or "").lower(), 5),
+    )
+    for item in ordered:
+        number = (item.get("number") or "").strip()
+        if number:
+            return number
+    return ""
+
+
+def parse_desc_fields(desc):
+    intern = ""
+    extern = ""
+    phone = ""
+    for line in (desc or "").splitlines():
+        low = line.lower().strip()
+        if low.startswith("intern:"):
+            intern = line.split(":", 1)[-1].strip()
+        elif low.startswith("extern:"):
+            extern = line.split(":", 1)[-1].strip()
+        elif low.startswith("tel:") or low.startswith("telefoon:") or low.startswith("gsm:"):
+            phone = line.split(":", 1)[-1].strip()
+    return intern, extern, phone
+
+
+def related_party_ids(ev):
+    contacts, companies = [], []
+    blobs = []
+    blobs.extend(ev.get("attendees") or [])
+    blobs.extend(ev.get("links") or [])
+    customer = ev.get("customer") or ev.get("deal") or {}
+    if isinstance(customer, dict):
+        blobs.append(customer)
+    for item in blobs:
+        if not isinstance(item, dict):
+            continue
+        typ = str(item.get("type") or item.get("type_id") or "").lower()
+        ident = item.get("id")
+        nested = item.get("customer") if isinstance(item.get("customer"), dict) else None
+        if nested:
+            typ = typ or str(nested.get("type") or "").lower()
+            ident = ident or nested.get("id")
+        if ident and typ == "contact":
+            contacts.append(ident)
+        elif ident and typ == "company":
+            companies.append(ident)
+    return contacts, companies
+
+
+def tl_info(token, endpoint, ident, cache=None):
+    if cache is None:
+        cache = getattr(tl_info, "cache", None)
+    if cache is None:
+        cache = {}
+        tl_info.cache = cache
+    key = f"{endpoint}:{ident}"
+    if key in cache:
+        return cache[key]
+    try:
+        res = http_json(
+            f"https://api.focus.teamleader.eu/{endpoint}",
+            {"id": ident},
+            token=token,
+        )
+        data = res.get("data") or {}
+    except Exception:
+        data = {}
+    cache[key] = data
+    return data
+
+
+def contact_label(data):
+    if not data:
+        return ""
+    if data.get("name"):
+        return data.get("name")
+    first = (data.get("first_name") or "").strip()
+    last = (data.get("last_name") or "").strip()
+    return f"{first} {last}".strip()
+
+
+def enrich_from_teamleader(token, ev):
+    intern, extern, phone = parse_desc_fields(ev.get("description") or "")
+    contacts, companies = related_party_ids(ev)
+    if not contacts and not companies and ev.get("id"):
+        detail = tl_info(token, "events.info", ev.get("id"))
+        if detail:
+            ev.update({k: detail.get(k, ev.get(k)) for k in ("attendees", "links", "customer") if detail.get(k)})
+            extra_c, extra_co = related_party_ids(detail)
+            contacts.extend(extra_c)
+            companies.extend(extra_co)
+            if not intern or not extern or not phone:
+                d_intern, d_extern, d_phone = parse_desc_fields(detail.get("description") or "")
+                intern = intern or d_intern
+                extern = extern or d_extern
+                phone = phone or d_phone
+    seen = set()
+    for cid in contacts:
+        if cid in seen:
+            continue
+        seen.add(cid)
+        data = tl_info(token, "contacts.info", cid)
+        extern = extern or contact_label(data)
+        phone = phone or pick_phone(data.get("telephones") or data.get("phone_numbers") or [])
+        if extern and phone:
+            break
+    if not phone or not extern:
+        seen_co = set()
+        for cid in companies:
+            if cid in seen_co:
+                continue
+            seen_co.add(cid)
+            data = tl_info(token, "companies.info", cid)
+            extern = extern or contact_label(data)
+            phone = phone or pick_phone(data.get("telephones") or data.get("phone_numbers") or [])
+            if extern and phone:
+                break
+    return intern, extern, phone
+
+
+def event_to_job(ev, bus_name, extern="", phone=""):
     start = parse_tl_time(ev.get("starts_at"))
     end = parse_tl_time(ev.get("ends_at"))
     loc = ev.get("location") or ""
     title = ev.get("title") or "Afspraak"
     desc = ev.get("description") or ""
-    intern = ""
-    for line in (desc or "").splitlines():
-        if line.lower().startswith("intern:"):
-            intern = line.split(":", 1)[-1].strip()
+    intern, desc_extern, desc_phone = parse_desc_fields(desc)
+    extern = extern or desc_extern
+    phone = phone or desc_phone
     return {
         "time": f"{start} - {end}".strip(" -"),
         "type": "Afspraak",
@@ -365,8 +534,8 @@ def event_to_job(ev, bus_name):
         "bus": official_agenda_name(bus_name) if official_agenda_name(bus_name) in AGENDA_NAMES
         else official_agenda_name(intern) if official_agenda_name(intern) in AGENDA_NAMES
         else official_agenda_name(bus_name, intern) or "Onbekende agenda",
-        "extern": "",
-        "phone": "",
+        "extern": extern,
+        "phone": phone,
         "location_name": loc.split("@")[0].strip() if loc else "",
         "address": loc.split("@")[-1].strip() if "@" in loc else loc,
         "amount": "",
@@ -394,6 +563,7 @@ def fetch_teamleader_jobs(d):
     token = refresh_token_if_needed()
     if not token:
         return None
+    tl_info.cache = {}
     start = f"{d}T00:00:00+02:00"
     end = f"{d}T23:59:59+02:00"
     users = []
@@ -418,7 +588,8 @@ def fetch_teamleader_jobs(d):
             except Exception:
                 events = []
             for ev in events:
-                jobs.append(event_to_job(ev, bus_name))
+                intern, extern, phone = enrich_from_teamleader(token, ev)
+                jobs.append(event_to_job(ev, bus_name, extern=extern, phone=phone))
     else:
         events = list_all_pages(
             token,
@@ -426,7 +597,8 @@ def fetch_teamleader_jobs(d):
             {"ends_after": start, "starts_before": end},
         )
         for ev in events:
-            jobs.append(event_to_job(ev, "Teamleader"))
+            intern, extern, phone = enrich_from_teamleader(token, ev)
+            jobs.append(event_to_job(ev, "Teamleader", extern=extern, phone=phone))
     return jobs
 
 
@@ -458,13 +630,30 @@ def decorate(jobs):
             ).fetchall()
         ]
         item["photo_urls"] = [url_for("uploaded_file", filename=p) for p in item["photos"]]
+        rpt = db.execute("SELECT id, status FROM dakgoot_reports WHERE job_id=?", (item["id"],)).fetchone()
+        item["dakgoot_id"] = rpt["id"] if rpt else None
+        item["dakgoot_status"] = rpt["status"] if rpt else None
         out.append(item)
     return out
 
 
 @app.before_request
 def setup():
-    init_db()
+    try:
+        init_db()
+    except Exception:
+        pass
+
+
+@app.errorhandler(500)
+def server_error(_e):
+    import traceback
+    return (
+        "<h1>Fout in het portaal</h1><pre style='white-space:pre-wrap'>"
+        + traceback.format_exc()
+        + "</pre>",
+        500,
+    )
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -553,6 +742,7 @@ def admin():
     return render_template(
         "admin.html", title="Admin", jobs=jobs, zzpers=zzpers, date=d,
         tl_connected=tl_connected(), worked=worked, agendas=agendas,
+        db_path=DB_PATH,
     )
 
 
@@ -720,7 +910,13 @@ def settings():
     if request.method == "POST":
         set_setting("tl_client_id", request.form.get("tl_client_id", "").strip())
         set_setting("tl_client_secret", request.form.get("tl_client_secret", "").strip())
-        flash("Teamleader-gegevens opgeslagen.")
+        set_setting("smtp_host", request.form.get("smtp_host", "").strip())
+        set_setting("smtp_port", request.form.get("smtp_port", "").strip() or "587")
+        set_setting("smtp_user", request.form.get("smtp_user", "").strip())
+        if request.form.get("smtp_pass", "").strip():
+            set_setting("smtp_pass", request.form.get("smtp_pass", "").strip())
+        set_setting("smtp_from", request.form.get("smtp_from", "").strip())
+        flash("Instellingen opgeslagen.")
         return redirect(url_for("settings"))
     return render_template(
         "settings.html",
@@ -729,6 +925,11 @@ def settings():
         tl_client_secret=get_setting("tl_client_secret"),
         tl_connected=tl_connected(),
         redirect_uri=url_for("teamleader_callback", _external=True),
+        smtp_host=get_setting("smtp_host"),
+        smtp_port=get_setting("smtp_port") or "587",
+        smtp_user=get_setting("smtp_user"),
+        smtp_pass=get_setting("smtp_pass"),
+        smtp_from=get_setting("smtp_from"),
     )
 
 
@@ -1014,6 +1215,194 @@ def rooster():
         is_admin=user["role"] == "admin",
         tab="rooster",
     )
+
+
+DAKGOOT_PUNTEN = [
+    "Dakgoot schoon en vrij van bladeren en vuil",
+    "Afvoer vrij en niet verstopt",
+    "Geen zichtbare beschadigingen of lekkages",
+    "Goede afwatering",
+    "Bevestiging en ophanging in orde",
+]
+
+
+@app.route("/job/<int:job_id>/dakgoot", methods=["GET", "POST"])
+def dakgoot_report(job_id):
+    user = current_user()
+    if not user:
+        return redirect(url_for("login"))
+    db = get_db()
+    job = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        flash("Klus niet gevonden.", "error")
+        return redirect(url_for("zzper"))
+    if user["role"] == "zzper" and not job_visible_for_zzper(job_id, user["id"]):
+        flash("Deze klus is niet van jou.", "error")
+        return redirect(url_for("zzper"))
+    report = db.execute("SELECT * FROM dakgoot_reports WHERE job_id=?", (job_id,)).fetchone()
+    photos = []
+    if report:
+        photos = [r["filename"] for r in db.execute(
+            "SELECT filename FROM report_photos WHERE report_id=? ORDER BY id", (report["id"],)
+        ).fetchall()]
+
+    if request.method == "POST":
+        status = request.form.get("status")
+        comment = request.form.get("comment", "").strip()
+        if status not in ("goedgekeurd", "afgekeurd"):
+            flash("Kies goedgekeurd of afgekeurd.", "error")
+            return redirect(url_for("dakgoot_report", job_id=job_id))
+        if status == "afgekeurd" and not comment:
+            flash("Bij afkeuring is een opmerking verplicht.", "error")
+            return redirect(url_for("dakgoot_report", job_id=job_id))
+        address = job["address"] or ""
+        now = datetime.now(timezone.utc).isoformat()
+        if report:
+            db.execute(
+                "UPDATE dakgoot_reports SET status=?, comment=?, address=?, created_at=? WHERE id=?",
+                (status, comment if status == "afgekeurd" else "", address, now, report["id"]),
+            )
+            report_id = report["id"]
+        else:
+            cur = db.execute(
+                "INSERT INTO dakgoot_reports (job_id, status, comment, address, created_at, zzper_id) VALUES (?,?,?,?,?,?)",
+                (job_id, status, comment if status == "afgekeurd" else "", address, now, user["id"]),
+            )
+            report_id = cur.lastrowid
+        # photos
+        files = request.files.getlist("photos")
+        uploaded = 0
+        for f in files:
+            if not f or not f.filename:
+                continue
+            ext = os.path.splitext(f.filename)[1].lower()
+            if ext not in ALLOWED_PHOTOS:
+                continue
+            os.makedirs(UPLOAD_DIR, exist_ok=True)
+            fname = f"rpt_{report_id}_{uuid.uuid4().hex[:10]}{ext}"
+            safe = secure_filename(fname)
+            f.save(os.path.join(UPLOAD_DIR, safe))
+            db.execute("INSERT INTO report_photos (report_id, filename) VALUES (?,?)", (report_id, safe))
+            uploaded += 1
+        if uploaded == 0 and not photos:
+            flash("Voeg minimaal 1 foto toe.", "error")
+            db.rollback()
+            return redirect(url_for("dakgoot_report", job_id=job_id))
+        db.commit()
+        flash("Dakgoot-rapport opgeslagen.")
+        if user["role"] == "admin":
+            return redirect(url_for("view_dakgoot", report_id=report_id))
+        return redirect(url_for("zzper", date=job["date"]))
+
+    return render_template(
+        "dakgoot.html",
+        title="Dakgoot rapport",
+        job=job,
+        report=report,
+        photos=photos,
+        punten=DAKGOOT_PUNTEN,
+        is_admin=user["role"] == "admin",
+    )
+
+
+@app.route("/dakgoot/<int:report_id>")
+def view_dakgoot(report_id):
+    user = current_user()
+    if not user:
+        return redirect(url_for("login"))
+    db = get_db()
+    report = db.execute("SELECT * FROM dakgoot_reports WHERE id=?", (report_id,)).fetchone()
+    if not report:
+        flash("Rapport niet gevonden.", "error")
+        return redirect(url_for("admin"))
+    job = db.execute("SELECT * FROM jobs WHERE id=?", (report["job_id"],)).fetchone()
+    photos = [r["filename"] for r in db.execute(
+        "SELECT filename FROM report_photos WHERE report_id=? ORDER BY id", (report_id,)
+    ).fetchall()]
+    zzper = db.execute("SELECT name FROM users WHERE id=?", (report["zzper_id"],)).fetchone()
+    return render_template(
+        "dakgoot_view.html",
+        title="Dakgoot rapport",
+        report=report,
+        job=job,
+        photos=photos,
+        punten=DAKGOOT_PUNTEN,
+        zzper_name=zzper["name"] if zzper else "",
+        is_admin=user["role"] == "admin",
+    )
+
+
+@app.route("/dakgoot/<int:report_id>/email", methods=["POST"])
+def email_dakgoot(report_id):
+    guard = login_required("admin")
+    if guard:
+        return guard
+    to_email = request.form.get("email", "").strip()
+    if not to_email or "@" not in to_email:
+        flash("Vul een geldig e-mailadres in.", "error")
+        return redirect(url_for("view_dakgoot", report_id=report_id))
+    db = get_db()
+    report = db.execute("SELECT * FROM dakgoot_reports WHERE id=?", (report_id,)).fetchone()
+    if not report:
+        flash("Rapport niet gevonden.", "error")
+        return redirect(url_for("admin"))
+    job = db.execute("SELECT * FROM jobs WHERE id=?", (report["job_id"],)).fetchone()
+    # For now: build a simple mailto-friendly text and also try SMTP if configured
+    status_txt = "Goedgekeurd" if report["status"] == "goedgekeurd" else "Afgekeurd"
+    body_lines = [
+        f"Dakgoot-rapport Huisconcierge",
+        f"Adres: {report['address'] or job['address'] or ''}",
+        f"Status: {status_txt}",
+    ]
+    if report["status"] == "goedgekeurd":
+        body_lines.append("Alle inspectiepunten zijn goedgekeurd.")
+    else:
+        body_lines.append(f"Opmerking: {report['comment'] or ''}")
+    body_lines.append(f"Datum klus: {job['date'] if job else ''}")
+    body = "\n".join(body_lines)
+    # Try SMTP if settings present
+    smtp_host = get_setting("smtp_host")
+    smtp_user = get_setting("smtp_user")
+    smtp_pass = get_setting("smtp_pass")
+    from_addr = get_setting("smtp_from") or smtp_user
+    if smtp_host and smtp_user and smtp_pass and from_addr:
+        try:
+            import smtplib
+            from email.message import EmailMessage
+            msg = EmailMessage()
+            msg["Subject"] = f"Dakgoot-rapport – {report['address'] or 'Huisconcierge'}"
+            msg["From"] = from_addr
+            msg["To"] = to_email
+            msg.set_content(body)
+            photos = [r["filename"] for r in db.execute(
+                "SELECT filename FROM report_photos WHERE report_id=?", (report_id,)
+            ).fetchall()]
+            for fn in photos:
+                path = os.path.join(UPLOAD_DIR, fn)
+                if os.path.exists(path):
+                    with open(path, "rb") as f:
+                        msg.add_attachment(f.read(), maintype="image", subtype="jpeg", filename=fn)
+            with smtplib.SMTP(smtp_host, int(get_setting("smtp_port") or 587)) as s:
+                s.starttls()
+                s.login(smtp_user, smtp_pass)
+                s.send_message(msg)
+            flash(f"Rapport verstuurd naar {to_email}.")
+        except Exception as e:
+            flash(f"E-mail mislukt: {e}. Gebruik de mailto-link hieronder.", "error")
+            # fall through to show mailto
+    else:
+        # No SMTP configured – provide mailto
+        import urllib.parse
+        mailto = f"mailto:{to_email}?subject={urllib.parse.quote('Dakgoot-rapport Huisconcierge')}&body={urllib.parse.quote(body)}"
+        flash("SMTP nog niet ingesteld. Open je mailprogramma via de knop.")
+        return render_template(
+            "dakgoot_email.html",
+            title="Verstuur rapport",
+            mailto=mailto,
+            to_email=to_email,
+            report_id=report_id,
+        )
+    return redirect(url_for("view_dakgoot", report_id=report_id))
 
 
 if __name__ == "__main__":
