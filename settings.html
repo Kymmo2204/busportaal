@@ -24,7 +24,30 @@
       <label>Client Secret</label>
       <input name="tl_client_secret" value="{{ tl_client_secret }}" autocomplete="off">
     </div>
-    <button type="submit">Gegevens opslaan</button>
+    <hr class="soft">
+    <h2>E-mail (optioneel)</h2>
+    <p class="small">Vul dit in als je rapporten automatisch wilt kunnen versturen. Anders opent je mailprogramma.</p>
+    <div class="form-row">
+      <label>SMTP-host</label>
+      <input name="smtp_host" value="{{ smtp_host }}" placeholder="smtp.gmail.com">
+    </div>
+    <div class="form-row">
+      <label>Poort</label>
+      <input name="smtp_port" value="{{ smtp_port }}" placeholder="587">
+    </div>
+    <div class="form-row">
+      <label>Gebruikersnaam</label>
+      <input name="smtp_user" value="{{ smtp_user }}">
+    </div>
+    <div class="form-row">
+      <label>Wachtwoord</label>
+      <input name="smtp_pass" type="password" value="{{ smtp_pass }}">
+    </div>
+    <div class="form-row">
+      <label>Afzender-adres</label>
+      <input name="smtp_from" value="{{ smtp_from }}" placeholder="noreply@huisconcierge.nl">
+    </div>
+    <button type="submit">Alles opslaan</button>
   </form>
   <p style="margin-top:12px">
     <a class="btn secondary" href="{{ url_for('teamleader_connect') }}">Teamleader verbinden</a>
