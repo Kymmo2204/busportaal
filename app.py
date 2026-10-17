@@ -1218,8 +1218,8 @@ def rooster():
 
 
 DAKGOOT_PUNTEN = [
-    "Dakgoot schoon en vrij van bladeren en vuil",
-    "Afvoer vrij en niet verstopt",
+    "Dakgoten schoon van blad en vervuiling",
+    "Hemelwaterafvoer gecontroleerd op verstoppingen",
     "Geen zichtbare beschadigingen of lekkages",
     "Goede afwatering",
     "Bevestiging en ophanging in orde",
@@ -1336,43 +1336,69 @@ def build_dakgoot_pdf(report, job, photos, zzper_name):
     from fpdf import FPDF
     pdf = FPDF()
     pdf.add_page()
+    # Header navy
+    pdf.set_fill_color(27, 33, 86)
+    pdf.rect(0, 0, 210, 28, "F")
+    pdf.set_text_color(255, 255, 255)
     pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 10, "Dakgoot-rapport Huisconcierge", ln=True)
+    pdf.set_xy(10, 8)
+    pdf.cell(0, 10, "Huisconcierge  ·  Dakgoot-rapport", ln=True)
+    pdf.set_text_color(27, 33, 86)
+    pdf.set_y(36)
     pdf.set_font("Helvetica", size=11)
-    pdf.ln(4)
     address = report["address"] or (job["address"] if job else "") or "-"
-    pdf.cell(0, 8, f"Adres: {address}", ln=True)
+    pdf.cell(0, 7, f"Adres: {address}", ln=True)
     if job and job["location_name"]:
-        pdf.cell(0, 8, f"Locatie: {job['location_name']}", ln=True)
-    pdf.cell(0, 8, f"Datum klus: {job['date'] if job else ''}", ln=True)
-    pdf.cell(0, 8, f"Ingevuld door: {zzper_name or '-'}", ln=True)
-    status_txt = "Goedgekeurd" if report["status"] == "goedgekeurd" else "Afgekeurd"
+        pdf.cell(0, 7, f"Locatie: {job['location_name']}", ln=True)
+    pdf.cell(0, 7, f"Datum: {job['date'] if job else ''}", ln=True)
+    pdf.cell(0, 7, f"Ingevuld door: {zzper_name or '-'}", ln=True)
     pdf.ln(4)
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 8, f"Status: {status_txt}", ln=True)
-    pdf.set_font("Helvetica", size=11)
+    status_txt = "Goedgekeurd" if report["status"] == "goedgekeurd" else "Afgekeurd"
+    pdf.set_font("Helvetica", "B", 13)
     if report["status"] == "goedgekeurd":
-        pdf.ln(2)
-        pdf.cell(0, 8, "Alle inspectiepunten zijn goedgekeurd:", ln=True)
-        for p in DAKGOOT_PUNTEN:
-            pdf.cell(0, 7, f"  - {p}", ln=True)
+        pdf.set_text_color(22, 101, 52)
     else:
-        pdf.ln(2)
-        pdf.multi_cell(0, 7, f"Opmerking: {report['comment'] or '-'}")
+        pdf.set_text_color(153, 27, 27)
+    pdf.cell(0, 8, f"Status: {status_txt}", ln=True)
+    pdf.set_text_color(27, 33, 86)
+    pdf.set_font("Helvetica", size=11)
+    pdf.ln(3)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 7, "Controlepunten", ln=True)
+    pdf.set_font("Helvetica", size=11)
+    # Always show the two fixed points with checkmark
+    fixed = [
+        "Dakgoten schoon van blad en vervuiling",
+        "Hemelwaterafvoer gecontroleerd op verstoppingen",
+    ]
+    for p in fixed:
+        pdf.cell(0, 7, f"  [v]  {p}", ln=True)
+    if report["status"] == "goedgekeurd":
+        for p in DAKGOOT_PUNTEN[2:]:
+            pdf.cell(0, 7, f"  [v]  {p}", ln=True)
+    else:
+        pdf.ln(3)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 7, "Opmerking bij afkeuring:", ln=True)
+        pdf.set_font("Helvetica", size=11)
+        pdf.multi_cell(0, 6, report["comment"] or "-")
     if photos:
         pdf.ln(6)
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(0, 8, "Foto's", ln=True)
-        pdf.set_font("Helvetica", size=11)
-        y = pdf.get_y()
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 7, "Foto's", ln=True)
+        y = pdf.get_y() + 2
         for i, fn in enumerate(photos[:2]):
             path = os.path.join(UPLOAD_DIR, fn)
             if os.path.exists(path):
                 try:
-                    pdf.image(path, x=10 + (i % 2) * 95, y=y, w=90)
+                    pdf.image(path, x=10 + (i % 2) * 95, y=y, w=88)
                 except Exception:
                     pass
-        pdf.ln(60)
+        pdf.ln(58)
+    pdf.set_y(-20)
+    pdf.set_font("Helvetica", size=8)
+    pdf.set_text_color(91, 98, 128)
+    pdf.cell(0, 6, "Huisconcierge  ·  Dakgoot-rapport", align="C")
     pdf_path = os.path.join("/tmp", f"dakgoot_{report['id']}.pdf")
     pdf.output(pdf_path)
     return pdf_path
