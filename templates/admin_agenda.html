@@ -55,7 +55,7 @@
     <div class="small" style="margin-top:8px">
       <strong>Bijverkoop:</strong>
       {% for b in j.bijverkoop %}
-        <div>{{ b.omschrijving }} — € {{ "%.2f"|format(b.bedrag) }}</div>
+        <div>{{ b.omschrijving }} — € {{ "%.2f"|format(b.bedrag) }} {% if b.confirmed %}✓{% else %}(niet bevestigd){% endif %}</div>
       {% endfor %}
     </div>
   {% endif %}
