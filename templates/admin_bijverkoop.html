@@ -38,6 +38,13 @@
   </div>
   <p>{{ r.omschrijving }}</p>
   <p class="small">Bedrag: € {{ "%.2f"|format(r.bedrag or 0) }}{% if r.title %} · {{ r.title }}{% endif %}{% if r.address %} · {{ r.address }}{% endif %}</p>
+  {% if r.confirmed %}
+    <span class="badge contant">Bevestigd</span>
+  {% else %}
+    <form method="post" action="{{ url_for('confirm_bijverkoop', bv_id=r.id) }}" style="margin:8px 0">
+      <button class="btn secondary" type="submit">Bevestigen</button>
+    </form>
+  {% endif %}
   <form method="post" action="{{ url_for('set_bijverkoop_bonus', bv_id=r.id) }}" class="form-row">
     <label>Bonus (€)</label>
     <input name="bonus" type="number" step="0.01" value="{{ r.bonus or 0 }}">
