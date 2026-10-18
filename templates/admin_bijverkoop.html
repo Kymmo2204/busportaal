@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1>Bijverkoop</h1>
+  <form method="get" class="form-row">
+    <label>Periode</label>
+    <select name="period" onchange="this.form.submit()">
+      <option value="week" {% if period=='week' %}selected{% endif %}>Week</option>
+      <option value="maand" {% if period=='maand' %}selected{% endif %}>Maand</option>
+      <option value="kwartaal" {% if period=='kwartaal' %}selected{% endif %}>Kwartaal</option>
+      <option value="jaar" {% if period=='jaar' %}selected{% endif %}>Jaar</option>
+    </select>
+    <input type="date" name="start" value="{{ start }}" onchange="this.form.submit()">
+  </form>
+  <p class="small">{{ start }} t/m {{ end }}</p>
+  <p><a class="btn secondary" href="{{ url_for('export_bijverkoop', period=period, start=start) }}">Download CSV</a></p>
+</div>
+
+<div class="card">
+  <h2>Totalen per zzper</h2>
+  {% if not totals %}
+    <p class="muted">Geen bijverkoop in deze periode.</p>
+  {% else %}
+    {% for t in totals %}
+      <div class="row" style="margin:8px 0">
+        <strong>{{ t.name }}</strong>
+        <span class="small">{{ t.aantal }} klus(sen) · € {{ "%.2f"|format(t.totaal or 0) }} · bonus € {{ "%.2f"|format(t.bonus_totaal or 0) }}</span>
+      </div>
+    {% endfor %}
+  {% endif %}
+</div>
+
+{% for r in rows %}
+<div class="card">
+  <div class="row">
+    <strong>{{ r.zzper_name }}</strong>
+    <span class="small">{{ r.date }}</span>
+  </div>
+  <p>{{ r.omschrijving }}</p>
+  <p class="small">Bedrag: € {{ "%.2f"|format(r.bedrag or 0) }}{% if r.title %} · {{ r.title }}{% endif %}{% if r.address %} · {{ r.address }}{% endif %}</p>
+  <form method="post" action="{{ url_for('set_bijverkoop_bonus', bv_id=r.id) }}" class="form-row">
+    <label>Bonus (€)</label>
+    <input name="bonus" type="number" step="0.01" value="{{ r.bonus or 0 }}">
+    <button class="btn secondary" type="submit" style="margin-top:8px">Bonus opslaan</button>
+  </form>
+</div>
+{% endfor %}
+{% endblock %}
