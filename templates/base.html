@@ -34,6 +34,7 @@
       <a class="tab {% if request.endpoint in ['admin','admin_agenda','admin_zzper_day','settings'] %}on{% endif %}" href="{{ url_for('admin') }}">Planning</a>
       <a class="tab {% if request.endpoint == 'rooster' %}on{% endif %}" href="{{ url_for('rooster') }}">Weekrooster</a>
       <a class="tab {% if request.endpoint == 'team' %}on{% endif %}" href="{{ url_for('team') }}">Zzpers</a>
+      <a class="tab {% if request.endpoint == 'admin_bijverkoop' %}on{% endif %}" href="{{ url_for('admin_bijverkoop') }}">Bijverkoop</a>
     {% else %}
       <a class="tab {% if request.endpoint == 'zzper' %}on{% endif %}" href="{{ url_for('zzper') }}">Mijn dag</a>
       <a class="tab {% if request.endpoint == 'rooster' %}on{% endif %}" href="{{ url_for('rooster') }}">Mijn rooster</a>
