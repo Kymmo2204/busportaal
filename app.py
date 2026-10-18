@@ -1336,15 +1336,22 @@ def build_dakgoot_pdf(report, job, photos, zzper_name):
     from fpdf import FPDF
     pdf = FPDF()
     pdf.add_page()
-    # Header navy
+    # Navy header bar
     pdf.set_fill_color(27, 33, 86)
-    pdf.rect(0, 0, 210, 28, "F")
+    pdf.rect(0, 0, 210, 32, "F")
+    # Coral accent line
+    pdf.set_fill_color(242, 122, 122)
+    pdf.rect(0, 32, 210, 3, "F")
+    # Logo text
     pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.set_xy(10, 8)
-    pdf.cell(0, 10, "Huisconcierge  ·  Dakgoot-rapport", ln=True)
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_xy(12, 10)
+    pdf.cell(0, 8, "Huisconcierge", ln=True)
+    pdf.set_font("Helvetica", size=9)
+    pdf.set_xy(12, 19)
+    pdf.cell(0, 6, "Dakgoot-rapport", ln=True)
     pdf.set_text_color(27, 33, 86)
-    pdf.set_y(36)
+    pdf.set_y(42)
     pdf.set_font("Helvetica", size=11)
     address = report["address"] or (job["address"] if job else "") or "-"
     pdf.cell(0, 7, f"Adres: {address}", ln=True)
@@ -1366,7 +1373,6 @@ def build_dakgoot_pdf(report, job, photos, zzper_name):
     pdf.set_font("Helvetica", "B", 11)
     pdf.cell(0, 7, "Controlepunten", ln=True)
     pdf.set_font("Helvetica", size=11)
-    # Always show the two fixed points with checkmark
     fixed = [
         "Dakgoten schoon van blad en vervuiling",
         "Hemelwaterafvoer gecontroleerd op verstoppingen",
@@ -1391,17 +1397,16 @@ def build_dakgoot_pdf(report, job, photos, zzper_name):
             path = os.path.join(UPLOAD_DIR, fn)
             if os.path.exists(path):
                 try:
-                    # Skip very large files to avoid memory issues
                     if os.path.getsize(path) > 3_000_000:
                         continue
                     pdf.image(path, x=10 + (i % 2) * 95, y=y, w=88)
                 except Exception:
                     pass
         pdf.ln(58)
-    pdf.set_y(-20)
+    pdf.set_y(-18)
     pdf.set_font("Helvetica", size=8)
     pdf.set_text_color(91, 98, 128)
-    pdf.cell(0, 6, "Huisconcierge  ·  Dakgoot-rapport", align="C")
+    pdf.cell(0, 5, "Huisconcierge  ·  huisconcierge.nl  ·  Dakgoot-rapport", align="C")
     pdf_path = os.path.join("/tmp", f"dakgoot_{report['id']}.pdf")
     pdf.output(pdf_path)
     return pdf_path
