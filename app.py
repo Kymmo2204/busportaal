@@ -257,6 +257,16 @@ def init_db():
             report_id INTEGER,
             filename TEXT
         );
+        CREATE TABLE IF NOT EXISTS bijverkoop (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER,
+            zzper_id INTEGER,
+            omschrijving TEXT,
+            bedrag REAL,
+            bonus REAL DEFAULT 0,
+            created_at TEXT,
+            date TEXT
+        );
         """
     )
     for u in USERS:
@@ -633,6 +643,11 @@ def decorate(jobs):
         rpt = db.execute("SELECT id, status FROM dakgoot_reports WHERE job_id=?", (item["id"],)).fetchone()
         item["dakgoot_id"] = rpt["id"] if rpt else None
         item["dakgoot_status"] = rpt["status"] if rpt else None
+        bvs = db.execute(
+            "SELECT omschrijving, bedrag FROM bijverkoop WHERE job_id=? ORDER BY id",
+            (item["id"],),
+        ).fetchall()
+        item["bijverkoop"] = [dict(b) for b in bvs]
         out.append(item)
     return out
 
@@ -1053,6 +1068,156 @@ def report(job_id):
     db.commit()
     flash("Terugmelding opgeslagen.")
     return redirect(url_for("zzper", date=d))
+
+
+@app.route("/job/<int:job_id>/bijverkoop", methods=["POST"])
+def add_bijverkoop(job_id):
+    user = current_user()
+    if not user or user["role"] != "zzper":
+        return redirect(url_for("login"))
+    if not job_visible_for_zzper(job_id, user["id"]):
+        flash("Deze klus is niet van jou.", "error")
+        return redirect(url_for("zzper"))
+    oms = request.form.get("omschrijving", "").strip()
+    try:
+        bedrag = float(request.form.get("bedrag", "0").replace(",", "."))
+    except ValueError:
+        bedrag = 0
+    if not oms or bedrag <= 0:
+        flash("Vul omschrijving en bedrag in.", "error")
+        return redirect(url_for("zzper", date=request.form.get("date")))
+    db = get_db()
+    job = db.execute("SELECT date FROM jobs WHERE id=?", (job_id,)).fetchone()
+    db.execute(
+        "INSERT INTO bijverkoop (job_id, zzper_id, omschrijving, bedrag, created_at, date) VALUES (?,?,?,?,?,?)",
+        (job_id, user["id"], oms, bedrag, datetime.now(timezone.utc).isoformat(), job["date"] if job else ""),
+    )
+    db.commit()
+    flash("Bijverkoop toegevoegd.")
+    return redirect(url_for("zzper", date=request.form.get("date") or date_cls.today().isoformat()))
+
+
+@app.route("/admin/bijverkoop")
+def admin_bijverkoop():
+    guard = login_required("admin")
+    if guard:
+        return guard
+    period = request.args.get("period") or "week"
+    start = request.args.get("start") or date_cls.today().isoformat()
+    db = get_db()
+    # calculate range
+    d = date_cls.fromisoformat(start)
+    if period == "week":
+        start_d = d - timedelta(days=d.weekday())
+        end_d = start_d + timedelta(days=6)
+    elif period == "maand":
+        start_d = d.replace(day=1)
+        if d.month == 12:
+            end_d = d.replace(year=d.year + 1, month=1, day=1) - timedelta(days=1)
+        else:
+            end_d = d.replace(month=d.month + 1, day=1) - timedelta(days=1)
+    elif period == "kwartaal":
+        q = (d.month - 1) // 3
+        start_d = date_cls(d.year, q * 3 + 1, 1)
+        if q == 3:
+            end_d = date_cls(d.year + 1, 1, 1) - timedelta(days=1)
+        else:
+            end_d = date_cls(d.year, (q + 1) * 3 + 1, 1) - timedelta(days=1)
+    else:  # jaar
+        start_d = date_cls(d.year, 1, 1)
+        end_d = date_cls(d.year, 12, 31)
+    rows = db.execute(
+        """
+        SELECT b.*, u.name as zzper_name, j.title, j.address
+        FROM bijverkoop b
+        JOIN users u ON u.id = b.zzper_id
+        LEFT JOIN jobs j ON j.id = b.job_id
+        WHERE b.date BETWEEN ? AND ?
+        ORDER BY b.date DESC, u.name
+        """,
+        (start_d.isoformat(), end_d.isoformat()),
+    ).fetchall()
+    totals = db.execute(
+        """
+        SELECT u.name, SUM(b.bedrag) as totaal, SUM(b.bonus) as bonus_totaal, COUNT(*) as aantal
+        FROM bijverkoop b
+        JOIN users u ON u.id = b.zzper_id
+        WHERE b.date BETWEEN ? AND ?
+        GROUP BY u.id, u.name
+        ORDER BY totaal DESC
+        """,
+        (start_d.isoformat(), end_d.isoformat()),
+    ).fetchall()
+    return render_template(
+        "admin_bijverkoop.html",
+        title="Bijverkoop",
+        rows=rows,
+        totals=totals,
+        period=period,
+        start=start_d.isoformat(),
+        end=end_d.isoformat(),
+    )
+
+
+@app.route("/admin/bijverkoop/<int:bv_id>/bonus", methods=["POST"])
+def set_bijverkoop_bonus(bv_id):
+    guard = login_required("admin")
+    if guard:
+        return guard
+    try:
+        bonus = float(request.form.get("bonus", "0").replace(",", "."))
+    except ValueError:
+        bonus = 0
+    get_db().execute("UPDATE bijverkoop SET bonus=? WHERE id=?", (bonus, bv_id))
+    get_db().commit()
+    flash("Bonus opgeslagen.")
+    return redirect(request.referrer or url_for("admin_bijverkoop"))
+
+
+@app.route("/admin/bijverkoop/export")
+def export_bijverkoop():
+    guard = login_required("admin")
+    if guard:
+        return guard
+    period = request.args.get("period") or "week"
+    start = request.args.get("start") or date_cls.today().isoformat()
+    d = date_cls.fromisoformat(start)
+    if period == "week":
+        start_d = d - timedelta(days=d.weekday())
+        end_d = start_d + timedelta(days=6)
+    elif period == "maand":
+        start_d = d.replace(day=1)
+        end_d = (start_d.replace(month=start_d.month % 12 + 1, day=1) if start_d.month < 12 else date_cls(start_d.year + 1, 1, 1)) - timedelta(days=1)
+    elif period == "kwartaal":
+        q = (d.month - 1) // 3
+        start_d = date_cls(d.year, q * 3 + 1, 1)
+        end_d = (date_cls(d.year, (q + 1) * 3 + 1, 1) if q < 3 else date_cls(d.year + 1, 1, 1)) - timedelta(days=1)
+    else:
+        start_d = date_cls(d.year, 1, 1)
+        end_d = date_cls(d.year, 12, 31)
+    rows = get_db().execute(
+        """
+        SELECT b.date, u.name, b.omschrijving, b.bedrag, b.bonus, j.title, j.address
+        FROM bijverkoop b
+        JOIN users u ON u.id = b.zzper_id
+        LEFT JOIN jobs j ON j.id = b.job_id
+        WHERE b.date BETWEEN ? AND ?
+        ORDER BY b.date, u.name
+        """,
+        (start_d.isoformat(), end_d.isoformat()),
+    ).fetchall()
+    import csv, io
+    out = io.StringIO()
+    w = csv.writer(out, delimiter=";")
+    w.writerow(["Datum", "Zzper", "Omschrijving", "Bedrag", "Bonus", "Klus", "Adres"])
+    for r in rows:
+        w.writerow([r["date"], r["name"], r["omschrijving"], r["bedrag"], r["bonus"], r["title"] or "", r["address"] or ""])
+    from flask import Response
+    return Response(
+        out.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=bijverkoop-{period}-{start_d}.csv"},
+    )
 
 
 def job_visible_for_zzper(job_id, zzper_id):
