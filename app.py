@@ -651,7 +651,7 @@ def decorate(jobs):
         item["dakgoot_id"] = rpt["id"] if rpt else None
         item["dakgoot_status"] = rpt["status"] if rpt else None
         bvs = db.execute(
-            "SELECT omschrijving, bedrag, confirmed FROM bijverkoop WHERE job_id=? ORDER BY id",
+            "SELECT id, omschrijving, bedrag, bonus, confirmed FROM bijverkoop WHERE job_id=? ORDER BY id",
             (item["id"],),
         ).fetchall()
         item["bijverkoop"] = [dict(b) for b in bvs]
