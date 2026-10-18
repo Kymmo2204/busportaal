@@ -33,6 +33,14 @@
   {% else %}
     <p class="small muted">Nog geen dakgoot-rapport ingevuld.</p>
   {% endif %}
+  {% if j.bijverkoop %}
+    <div class="small" style="margin-top:8px">
+      <strong>Bijverkoop:</strong>
+      {% for b in j.bijverkoop %}
+        <div>{{ b.omschrijving }} — € {{ "%.2f"|format(b.bedrag) }} {% if b.confirmed %}✓{% else %}(niet bevestigd){% endif %}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
   {% if j.photos %}
     <div class="photos">
       {% for p in j.photos %}
