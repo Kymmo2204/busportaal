@@ -1391,6 +1391,9 @@ def build_dakgoot_pdf(report, job, photos, zzper_name):
             path = os.path.join(UPLOAD_DIR, fn)
             if os.path.exists(path):
                 try:
+                    # Skip very large files to avoid memory issues
+                    if os.path.getsize(path) > 3_000_000:
+                        continue
                     pdf.image(path, x=10 + (i % 2) * 95, y=y, w=88)
                 except Exception:
                     pass
@@ -1469,7 +1472,7 @@ def email_dakgoot(report_id):
             msg.set_content(body)
             with open(pdf_path, "rb") as f:
                 msg.add_attachment(f.read(), maintype="application", subtype="pdf", filename=f"dakgoot-rapport-{report_id}.pdf")
-            with smtplib.SMTP(smtp_host, int(get_setting("smtp_port") or 587)) as s:
+            with smtplib.SMTP(smtp_host, int(get_setting("smtp_port") or 587), timeout=20) as s:
                 s.starttls()
                 s.login(smtp_user, smtp_pass)
                 s.send_message(msg)
