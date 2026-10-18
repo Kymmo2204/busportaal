@@ -644,7 +644,7 @@ def decorate(jobs):
         item["dakgoot_id"] = rpt["id"] if rpt else None
         item["dakgoot_status"] = rpt["status"] if rpt else None
         bvs = db.execute(
-            "SELECT omschrijving, bedrag FROM bijverkoop WHERE job_id=? ORDER BY id",
+            "SELECT omschrijving, bedrag, confirmed FROM bijverkoop WHERE job_id=? ORDER BY id",
             (item["id"],),
         ).fetchall()
         item["bijverkoop"] = [dict(b) for b in bvs]
@@ -1174,6 +1174,17 @@ def set_bijverkoop_bonus(bv_id):
     return redirect(request.referrer or url_for("admin_bijverkoop"))
 
 
+@app.route("/admin/bijverkoop/<int:bv_id>/confirm", methods=["POST"])
+def confirm_bijverkoop(bv_id):
+    guard = login_required("admin")
+    if guard:
+        return guard
+    get_db().execute("UPDATE bijverkoop SET confirmed=1 WHERE id=?", (bv_id,))
+    get_db().commit()
+    flash("Bijverkoop bevestigd.")
+    return redirect(request.referrer or url_for("admin_bijverkoop"))
+
+
 @app.route("/admin/bijverkoop/export")
 def export_bijverkoop():
     guard = login_required("admin")
@@ -1197,7 +1208,7 @@ def export_bijverkoop():
         end_d = date_cls(d.year, 12, 31)
     rows = get_db().execute(
         """
-        SELECT b.date, u.name, b.omschrijving, b.bedrag, b.bonus, j.title, j.address
+        SELECT b.date, u.name, b.omschrijving, b.bedrag, b.bonus, b.confirmed, j.title, j.address
         FROM bijverkoop b
         JOIN users u ON u.id = b.zzper_id
         LEFT JOIN jobs j ON j.id = b.job_id
@@ -1209,9 +1220,9 @@ def export_bijverkoop():
     import csv, io
     out = io.StringIO()
     w = csv.writer(out, delimiter=";")
-    w.writerow(["Datum", "Zzper", "Omschrijving", "Bedrag", "Bonus", "Klus", "Adres"])
+    w.writerow(["Datum", "Zzper", "Omschrijving", "Bedrag", "Bonus", "Bevestigd", "Klus", "Adres"])
     for r in rows:
-        w.writerow([r["date"], r["name"], r["omschrijving"], r["bedrag"], r["bonus"], r["title"] or "", r["address"] or ""])
+        w.writerow([r["date"], r["name"], r["omschrijving"], r["bedrag"], r["bonus"], "ja" if r["confirmed"] else "nee", r["title"] or "", r["address"] or ""])
     from flask import Response
     return Response(
         out.getvalue(),
