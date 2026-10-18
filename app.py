@@ -284,6 +284,13 @@ def init_db():
         )
     except sqlite3.Error:
         pass
+    # migrate bijverkoop confirmed column
+    try:
+        cols = [r[1] for r in db.execute("PRAGMA table_info(bijverkoop)").fetchall()]
+        if cols and "confirmed" not in cols:
+            db.execute("ALTER TABLE bijverkoop ADD COLUMN confirmed INTEGER DEFAULT 0")
+    except sqlite3.Error:
+        pass
     try:
         db.commit()
     except sqlite3.Error:
