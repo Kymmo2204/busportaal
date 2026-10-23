@@ -1578,11 +1578,25 @@ def build_dakgoot_pdf(report, job, photos, zzper_name):
         y = pdf.get_y() + 2
         for i, fn in enumerate(photos[:2]):
             path = os.path.join(UPLOAD_DIR, fn)
-            if os.path.exists(path):
+            if not os.path.exists(path):
+                continue
+            try:
+                # Resize large photos so they fit and don't get skipped
+                from PIL import Image
+                import io
+                img = Image.open(path)
+                img.thumbnail((800, 600))
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=75)
+                buf.seek(0)
+                pdf.image(buf, x=10 + (i % 2) * 95, y=y, w=88)
+            except Exception:
+                # fallback: try original if small enough
                 try:
-                    if os.path.getsize(path) > 3_000_000:
-                        continue
-                    pdf.image(path, x=10 + (i % 2) * 95, y=y, w=88)
+                    if os.path.getsize(path) < 2_000_000:
+                        pdf.image(path, x=10 + (i % 2) * 95, y=y, w=88)
                 except Exception:
                     pass
         pdf.ln(58)
