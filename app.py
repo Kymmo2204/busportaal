@@ -1430,52 +1430,57 @@ def dakgoot_report(job_id):
         ).fetchall()]
 
     if request.method == "POST":
-        status = request.form.get("status")
-        comment = request.form.get("comment", "").strip()
-        if status not in ("goedgekeurd", "afgekeurd"):
-            flash("Kies goedgekeurd of afgekeurd.", "error")
-            return redirect(url_for("dakgoot_report", job_id=job_id))
-        if status == "afgekeurd" and not comment:
-            flash("Bij afkeuring is een opmerking verplicht.", "error")
-            return redirect(url_for("dakgoot_report", job_id=job_id))
-        address = job["address"] or ""
-        now = datetime.now(timezone.utc).isoformat()
-        if report:
-            db.execute(
-                "UPDATE dakgoot_reports SET status=?, comment=?, address=?, created_at=? WHERE id=?",
-                (status, comment if status == "afgekeurd" else "", address, now, report["id"]),
-            )
-            report_id = report["id"]
-        else:
-            cur = db.execute(
-                "INSERT INTO dakgoot_reports (job_id, status, comment, address, created_at, zzper_id) VALUES (?,?,?,?,?,?)",
-                (job_id, status, comment if status == "afgekeurd" else "", address, now, user["id"]),
-            )
-            report_id = cur.lastrowid
-        # photos
-        files = request.files.getlist("photos")
-        uploaded = 0
-        for f in files:
-            if not f or not f.filename:
-                continue
-            ext = os.path.splitext(f.filename)[1].lower()
-            if ext not in ALLOWED_PHOTOS:
-                continue
-            os.makedirs(UPLOAD_DIR, exist_ok=True)
-            fname = f"rpt_{report_id}_{uuid.uuid4().hex[:10]}{ext}"
-            safe = secure_filename(fname)
-            f.save(os.path.join(UPLOAD_DIR, safe))
-            db.execute("INSERT INTO report_photos (report_id, filename) VALUES (?,?)", (report_id, safe))
-            uploaded += 1
-        if uploaded == 0 and not photos:
-            flash("Voeg minimaal 1 foto toe.", "error")
+        try:
+            status = request.form.get("status")
+            comment = request.form.get("comment", "").strip()
+            if status not in ("goedgekeurd", "afgekeurd"):
+                flash("Kies goedgekeurd of afgekeurd.", "error")
+                return redirect(url_for("dakgoot_report", job_id=job_id))
+            if status == "afgekeurd" and not comment:
+                flash("Bij afkeuring is een opmerking verplicht.", "error")
+                return redirect(url_for("dakgoot_report", job_id=job_id))
+            address = job["address"] or ""
+            now = datetime.now(timezone.utc).isoformat()
+            if report:
+                db.execute(
+                    "UPDATE dakgoot_reports SET status=?, comment=?, address=?, created_at=? WHERE id=?",
+                    (status, comment if status == "afgekeurd" else "", address, now, report["id"]),
+                )
+                report_id = report["id"]
+            else:
+                cur = db.execute(
+                    "INSERT INTO dakgoot_reports (job_id, status, comment, address, created_at, zzper_id) VALUES (?,?,?,?,?,?)",
+                    (job_id, status, comment if status == "afgekeurd" else "", address, now, user["id"]),
+                )
+                report_id = cur.lastrowid
+            # photos
+            files = request.files.getlist("photos")
+            uploaded = 0
+            for f in files:
+                if not f or not f.filename:
+                    continue
+                ext = os.path.splitext(f.filename)[1].lower()
+                if ext not in ALLOWED_PHOTOS:
+                    continue
+                os.makedirs(UPLOAD_DIR, exist_ok=True)
+                fname = f"rpt_{report_id}_{uuid.uuid4().hex[:10]}{ext}"
+                safe = secure_filename(fname)
+                f.save(os.path.join(UPLOAD_DIR, safe))
+                db.execute("INSERT INTO report_photos (report_id, filename) VALUES (?,?)", (report_id, safe))
+                uploaded += 1
+            if uploaded == 0 and not photos:
+                flash("Voeg minimaal 1 foto toe (of kies er een uit je galerij). Het rapport is niet opgeslagen.", "error")
+                db.rollback()
+                return redirect(url_for("dakgoot_report", job_id=job_id))
+            db.commit()
+            flash("Dakgoot-rapport opgeslagen.")
+            if user["role"] == "admin":
+                return redirect(url_for("view_dakgoot", report_id=report_id))
+            return redirect(url_for("zzper", date=job["date"]))
+        except Exception as e:
             db.rollback()
+            flash(f"Fout bij opslaan: {e}", "error")
             return redirect(url_for("dakgoot_report", job_id=job_id))
-        db.commit()
-        flash("Dakgoot-rapport opgeslagen.")
-        if user["role"] == "admin":
-            return redirect(url_for("view_dakgoot", report_id=report_id))
-        return redirect(url_for("zzper", date=job["date"]))
 
     return render_template(
         "dakgoot.html",
